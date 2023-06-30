@@ -1,0 +1,128 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metube
+  labels:
+    app: metube
+  annotations:
+    kubesailEditorUid: c6be85c4-99aa-4e0e-8f17-37380ac1ce5c
+    
+spec:
+  strategy:
+    type: Recreate
+  replicas: 1
+  selector:
+    matchLabels:
+      app: metube
+  template:
+    metadata:
+      labels:
+        app: metube
+    spec:
+      initContainers:
+        - name: setup-home-downloads
+          image: kubesail/k8s-tools:v6
+          volumeMounts:
+            - name: metube-data
+              mountPath: /home/metube
+      containers:
+        - name: metube
+          image: alexta69/metube:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8081
+          env:
+            - name: DOWNLOAD_DIR
+              value: "/home/metube/downloads"
+            - name: STATE_DIR
+              value: "/home/metube/state"
+            - name: TEMP_DIR
+              value: "/home/metube/temp"
+
+          volumeMounts:
+            - name: metube-data
+              mountPath: /home/metube
+      volumes:
+        - name: metube-data
+          persistentVolumeClaim:
+            claimName: metube-data
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: metube
+  labels:
+    app: metube
+  annotations:
+    kubesailEditorUid: 9fd8ddde-a5a2-4188-b446-27b0f3bfe6dc
+    cert-manager.io/cluster-issuer: letsencrypt
+    nginx.ingress.kubernetes.io/proxy-body-size: 500m
+    nginx.org/websocket-services: metube
+    kubernetes.io/tls-acme: "true"
+spec:
+  tls:
+    - hosts:
+        - metube.{{ CLUSTER_ADDRESS }}
+        - metube.{{ LOCAL_CLUSTER_ADDRESS }}
+  rules:
+    - host: metube.{{ CLUSTER_ADDRESS }}
+      http:
+        paths:
+          - pathType: ImplementationSpecific
+            backend:
+              service:
+                name: metube
+                port:
+                  name: http
+    - host: metube.{{ LOCAL_CLUSTER_ADDRESS }}
+      http:
+        paths:
+          - pathType: ImplementationSpecific
+            backend:
+              service:
+                name: metube
+                port:
+                  name: http
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: metube-data
+  labels:
+    app: metube
+  annotations:
+    kubesailEditorUid: 0d85732a-1b3e-44d7-af8b-ea2ff1a762dc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+status:
+  phase: Bound
+  accessModes:
+    - ReadWriteOnce
+  capacity:
+    storage: 5Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: metube
+  labels:
+    app: metube
+  annotations:
+    kubesailEditorUid: 8f5fa438-24d7-435a-89ee-df5b741d377b
+    
+spec:
+  selector:
+    app: metube
+  ports:
+    - port: 8081
+      protocol: TCP
+      targetPort: http
+
